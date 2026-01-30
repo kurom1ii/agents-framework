@@ -31,6 +31,15 @@ Example:
 
     # Execute tools
     result = await registry.execute("search", query="AI news")
+
+    # Using spawn_agent for sub-agent creation
+    from agents_framework.tools import spawn_agent
+
+    result = await spawn_agent(
+        agent_id="researcher",
+        purpose="Research task",
+        task="Find AI frameworks"
+    )
 """
 
 from .base import (
@@ -57,6 +66,13 @@ from .schema import (
     get_json_type,
     validate_against_schema,
 )
+from .spawn_agent import (
+    spawn_agent,
+    spawn_parallel,
+    create_spawn_agent_tool,
+    create_spawn_parallel_tool,
+    SPAWN_AGENT_TOOL_DEFINITION,
+)
 
 __all__ = [
     # Base classes
@@ -80,4 +96,10 @@ __all__ = [
     "generate_dataclass_schema",
     "get_json_type",
     "validate_against_schema",
+    # Spawn agent
+    "spawn_agent",
+    "spawn_parallel",
+    "create_spawn_agent_tool",
+    "create_spawn_parallel_tool",
+    "SPAWN_AGENT_TOOL_DEFINITION",
 ]
