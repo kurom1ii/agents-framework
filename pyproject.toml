@@ -40,6 +40,7 @@ dependencies = [
     "tenacity>=8.2.0",
     "structlog>=23.0.0",
     "python-dotenv>=1.0.0",
+    "aiofiles>=25.1.0",
 ]
 
 [project.optional-dependencies]
