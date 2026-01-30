@@ -1,37 +1,52 @@
 """
-Sessions Package - Quản lý Sessions.
+Session Management Core.
 
-Package này cung cấp hệ thống quản lý sessions cho agents,
-bao gồm tạo, lưu trữ và theo dõi trạng thái của sessions.
+Module này cung cấp hệ thống quản lý Session theo mô hình OpenClaw,
+bao gồm:
 
-Các thành phần chính:
-- Session: Data class đại diện cho một session
-- SessionScope: Phạm vi session (main, per_peer, per_context)
-- SessionState: Trạng thái session (active, idle, expired, archived)
-- SessionConfig: Cấu hình session
-- SessionManager: Quản lý lifecycle của sessions
-- SessionStore: Interface lưu trữ sessions
+- Session và SessionConfig: Models cơ bản
+- SessionStore: Protocol và implementations cho lưu trữ
+- SessionManager: Quản lý vòng đời session
 - SessionResolver: Giải quyết session keys
+- TranscriptStore: Lưu trữ bản ghi hội thoại
 
-Example:
+Ví dụ sử dụng:
+    ```python
     from agents_framework.sessions import (
         SessionManager,
         SessionConfig,
         SessionScope,
         InMemorySessionStore,
+        TranscriptStore,
+        TranscriptEntry,
     )
 
     # Tạo session manager
     store = InMemorySessionStore()
-    config = SessionConfig(reset_policy="daily")
-    manager = SessionManager(store=store, config=config)
+    config = SessionConfig(
+        scope=SessionScope.PER_PEER,
+        reset_mode="combined",
+        idle_minutes=60
+    )
+    manager = SessionManager(store, config)
 
     # Tạo hoặc lấy session
-    session = await manager.get_or_create_session(
-        agent_id="assistant",
-        scope=SessionScope.PER_PEER,
-        identifier="user123"
+    session = await manager.get_or_create(
+        key="agent:assistant:dm:user123",
+        agent_id="assistant"
     )
+
+    # Cập nhật token usage
+    session.update_tokens(input_tokens=500, output_tokens=200)
+    await manager.update(session)
+
+    # Lưu transcript
+    transcript_store = TranscriptStore()
+    await transcript_store.append(
+        session.session_id,
+        TranscriptEntry.user("Hello, how are you?")
+    )
+    ```
 """
 
 from .base import (
@@ -40,21 +55,35 @@ from .base import (
     SessionScope,
     SessionState,
 )
+
 from .store import (
-    CompositeSessionStore,
-    FileSessionStore,
-    InMemorySessionStore,
     SessionStore,
+    InMemorySessionStore,
+    FileSessionStore,
+    CompositeSessionStore,
 )
+
+from .manager import (
+    SessionManager,
+    create_in_memory_manager,
+)
+
 from .resolver import (
-    SessionKeyComponents,
     SessionResolver,
+    SessionKeyComponents,
     get_resolver,
 )
-from .manager import SessionManager
+
+from .transcript import (
+    TranscriptEntry,
+    TranscriptStore,
+    TranscriptStoreProtocol,
+    InMemoryTranscriptStore,
+    FileTranscriptStore,
+)
 
 __all__ = [
-    # Base
+    # Base models
     "Session",
     "SessionConfig",
     "SessionScope",
@@ -64,10 +93,17 @@ __all__ = [
     "InMemorySessionStore",
     "FileSessionStore",
     "CompositeSessionStore",
+    # Manager
+    "SessionManager",
+    "create_in_memory_manager",
     # Resolver
     "SessionResolver",
     "SessionKeyComponents",
     "get_resolver",
-    # Manager
-    "SessionManager",
+    # Transcript
+    "TranscriptEntry",
+    "TranscriptStore",
+    "TranscriptStoreProtocol",
+    "InMemoryTranscriptStore",
+    "FileTranscriptStore",
 ]
