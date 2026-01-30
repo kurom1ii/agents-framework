@@ -1,9 +1,32 @@
-"""Agent implementations for the agents framework."""
+"""Agent implementations for the agents framework.
 
-from .base import AgentConfig, AgentRole, AgentStatus, BaseAgent, Task, TaskResult
-from .router import RouterAgent
-from .spawner import AgentSpawner, AgentTemplate
-from .supervisor import AggregatedResult, DelegationStrategy, SupervisorAgent
+This package provides the agent system including base agents,
+worker agents, supervisor agents, and routing capabilities.
+
+Example:
+    from agents_framework.agents import BaseAgent, AgentRole, Task
+
+    class MyAgent(BaseAgent):
+        async def run(self, task: Task) -> TaskResult:
+            # Agent implementation
+            pass
+
+    role = AgentRole(
+        name="researcher",
+        description="Research agent for gathering information",
+        capabilities=["search", "summarize"],
+    )
+    agent = MyAgent(role=role)
+"""
+
+from .base import (
+    AgentConfig,
+    AgentRole,
+    AgentStatus,
+    BaseAgent,
+    Task,
+    TaskResult,
+)
 
 __all__ = [
     # Base
@@ -13,13 +36,4 @@ __all__ = [
     "BaseAgent",
     "Task",
     "TaskResult",
-    # Supervisor
-    "SupervisorAgent",
-    "AggregatedResult",
-    "DelegationStrategy",
-    # Router
-    "RouterAgent",
-    # Spawner
-    "AgentSpawner",
-    "AgentTemplate",
 ]
