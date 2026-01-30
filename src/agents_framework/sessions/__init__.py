@@ -10,18 +10,22 @@ bao gồm:
 - SessionResolver: Giải quyết session keys
 - TranscriptStore: Lưu trữ bản ghi hội thoại
 
-Ví dụ sử dụng:
+Session Stores có sẵn:
+- InMemorySessionStore: Lưu trữ trong bộ nhớ (development, testing)
+- FileSessionStore: Lưu trữ file JSON (simple persistence)
+- SQLiteSessionStore: Lưu trữ SQLite (production, với connection pooling)
+- CompositeSessionStore: Kết hợp cache và persistence
+
+Ví dụ sử dụng InMemorySessionStore:
     ```python
     from agents_framework.sessions import (
         SessionManager,
         SessionConfig,
         SessionScope,
         InMemorySessionStore,
-        TranscriptStore,
-        TranscriptEntry,
     )
 
-    # Tạo session manager
+    # Tạo session manager với in-memory store
     store = InMemorySessionStore()
     config = SessionConfig(
         scope=SessionScope.PER_PEER,
@@ -29,23 +33,36 @@ Ví dụ sử dụng:
         idle_minutes=60
     )
     manager = SessionManager(store, config)
+    ```
 
-    # Tạo hoặc lấy session
-    session = await manager.get_or_create(
-        key="agent:assistant:dm:user123",
-        agent_id="assistant"
+Ví dụ sử dụng SQLiteSessionStore (production):
+    ```python
+    from pathlib import Path
+    from agents_framework.sessions import (
+        SessionManager,
+        SessionConfig,
+        SQLiteSessionStore,
     )
 
-    # Cập nhật token usage
-    session.update_tokens(input_tokens=500, output_tokens=200)
-    await manager.update(session)
+    # Tạo session manager với SQLite store
+    async def setup():
+        store = SQLiteSessionStore(
+            db_path=Path("./data/sessions.db"),
+            pool_size=5,
+            timeout=30.0
+        )
+        await store.initialize()
 
-    # Lưu transcript
-    transcript_store = TranscriptStore()
-    await transcript_store.append(
-        session.session_id,
-        TranscriptEntry.user("Hello, how are you?")
-    )
+        # Kiểm tra health
+        if await store.health_check():
+            print("Database healthy!")
+
+        config = SessionConfig(reset_mode="combined")
+        manager = SessionManager(store, config)
+
+        # Sử dụng context manager
+        async with SQLiteSessionStore(Path("./sessions.db")) as store:
+            sessions = await store.list_all()
     ```
 """
 
@@ -61,6 +78,7 @@ from .store import (
     InMemorySessionStore,
     FileSessionStore,
     CompositeSessionStore,
+    SQLiteSessionStore,
 )
 
 from .manager import (
@@ -93,6 +111,7 @@ __all__ = [
     "InMemorySessionStore",
     "FileSessionStore",
     "CompositeSessionStore",
+    "SQLiteSessionStore",
     # Manager
     "SessionManager",
     "create_in_memory_manager",
