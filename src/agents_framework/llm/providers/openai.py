@@ -161,8 +161,19 @@ class OpenAIProvider(BaseLLMProvider):
             if formatted_tools:
                 request_params["tools"] = formatted_tools
 
-            # Merge extra params
-            request_params.update(self.config.extra_params)
+            # Merge extra params - separate standard params from extended params
+            extended_params = {}
+            for key, value in self.config.extra_params.items():
+                # These params need to go through extra_body for OpenAI-compatible proxies
+                if key in ("thinking", "anthropic_version", "metadata"):
+                    extended_params[key] = value
+                else:
+                    request_params[key] = value
+
+            # Pass extended params via extra_body
+            if extended_params:
+                request_params["extra_body"] = extended_params
+
             request_params.update(kwargs)
 
             # Remove non-API params
@@ -240,8 +251,19 @@ class OpenAIProvider(BaseLLMProvider):
         if formatted_tools:
             request_params["tools"] = formatted_tools
 
-        # Merge extra params
-        request_params.update(self.config.extra_params)
+        # Merge extra params - separate standard params from extended params
+        extended_params = {}
+        for key, value in self.config.extra_params.items():
+            # These params need to go through extra_body for OpenAI-compatible proxies
+            if key in ("thinking", "anthropic_version", "metadata"):
+                extended_params[key] = value
+            else:
+                request_params[key] = value
+
+        # Pass extended params via extra_body
+        if extended_params:
+            request_params["extra_body"] = extended_params
+
         for key in ["temperature", "stream"]:
             request_params.pop(key, None)
         request_params["temperature"] = kwargs.get(
