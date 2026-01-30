@@ -10,6 +10,9 @@ Các thành phần chính:
 - RoutingConfig: Cấu hình cho routing engine
 - StaticRouter: Router dựa trên rules cố định
 - PatternRouter: Router dựa trên regex patterns
+- ContentRouter: Router dựa trên nội dung (commands, hashtags, keywords)
+- DynamicRouter: Router động kết hợp nhiều chiến lược
+- AgentDiscovery: Tự động phát hiện và quản lý agents
 
 Ví dụ sử dụng:
 
@@ -56,6 +59,17 @@ Ví dụ sử dụng:
 
     # Hoặc route và execute trực tiếp
     result = await engine.route_and_execute(request)
+
+    # Sử dụng DynamicRouter với commands và hashtags
+    from agents_framework.routing import DynamicRouter
+
+    router = DynamicRouter(
+        command_mapping={"/code": "coder", "/research": "researcher"},
+        hashtag_mapping={"#work": "work_agent", "#personal": "personal_agent"},
+    )
+
+    request = RoutingRequest(message="#work Schedule meeting tomorrow")
+    agent_id = await router.route(request)  # -> "work_agent"
 """
 
 from .base import (
@@ -71,8 +85,34 @@ from .config import (
     RoutingConfig,
     RoutingStrategy,
 )
+from .discovery import (
+    AgentDiscovery,
+    CapabilityMatcher,
+    DiscoveredAgent,
+    LoadBalancingStrategy,
+)
+from .dynamic import DynamicRouter, DynamicRouterBuilder
 from .engine import CombinedRouter, RoutingEngine
-from .strategies import PatternRouter, StaticRouter
+from .hooks import (
+    AuditRoutingHook,
+    LoggingRoutingHook,
+    MetricsRoutingHook,
+    RequestModifierHook,
+    RoutingHook,
+    RoutingHookContext,
+    RoutingHookEntry,
+    RoutingHookRegistry,
+    RoutingHookType,
+)
+from .strategies import (
+    ContentAnalyzer,
+    ContentHints,
+    ContentRouter,
+    IntentClassifier,
+    KeywordMatcher,
+    PatternRouter,
+    StaticRouter,
+)
 
 __all__ = [
     # Core
@@ -87,6 +127,30 @@ __all__ = [
     "StaticRouter",
     "PatternRouter",
     "CombinedRouter",
+    # Content-based routing
+    "ContentRouter",
+    "ContentAnalyzer",
+    "ContentHints",
+    "KeywordMatcher",
+    "IntentClassifier",
+    # Dynamic routing
+    "DynamicRouter",
+    "DynamicRouterBuilder",
+    # Discovery
+    "AgentDiscovery",
+    "DiscoveredAgent",
+    "CapabilityMatcher",
+    "LoadBalancingStrategy",
+    # Hooks
+    "RoutingHook",
+    "RoutingHookType",
+    "RoutingHookContext",
+    "RoutingHookEntry",
+    "RoutingHookRegistry",
+    "LoggingRoutingHook",
+    "MetricsRoutingHook",
+    "AuditRoutingHook",
+    "RequestModifierHook",
     # Config types
     "RoutingStrategy",
     "AgentRouteMapping",
