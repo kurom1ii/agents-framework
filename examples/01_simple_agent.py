@@ -21,12 +21,12 @@ from agents_framework.tools.registry import ToolRegistry
 
 LLM_CONFIG = LLMConfig(
     model="claude-opus-4.5",
-    api_key="your-api-key",  # Thay bằng API key thực
+    api_key="test",  # Thay bằng API key thực
     base_url="http://localhost:4141/v1",  # OpenAI-compatible endpoint
     temperature=0.7,
-    max_tokens=4096,
+    max_tokens=16000,
     extra_params={
-        "thinking": {"type": "enabled", "budget_tokens": 10000},
+        "thinking": {"type": "enabled", "budget_tokens": 32000},
     },
 )
 

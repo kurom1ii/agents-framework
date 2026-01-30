@@ -13,12 +13,60 @@ Features:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
 from .audit import A2AAuditLog
 from .permissions import A2APermission, PermissionLevel, PermissionManager
 from .sandbox import SpawnSandbox, SpawnSandboxConfig
+
+
+# Security: Regex pattern for valid agent IDs
+VALID_AGENT_ID_PATTERN = re.compile(r'^[a-zA-Z0-9_-]{1,64}$')
+
+
+def _validate_agent_id(agent_id: str) -> bool:
+    """
+    Validate agent ID format để ngăn chặn injection attacks.
+
+    Agent ID hợp lệ chỉ chứa: a-z, A-Z, 0-9, _, -
+    Độ dài: 1-64 ký tự.
+
+    Args:
+        agent_id: ID cần validate
+
+    Returns:
+        True nếu hợp lệ
+    """
+    if agent_id == "*":  # Allow wildcard explicitly
+        return True
+    if not agent_id or not isinstance(agent_id, str):
+        return False
+    return bool(VALID_AGENT_ID_PATTERN.match(agent_id))
+
+
+def _extract_agent_from_session_key(session_key: str) -> Optional[str]:
+    """
+    Safely extract agent ID from session key.
+
+    Format: agent:<agentId>:<scope>:<identifier>
+
+    Args:
+        session_key: Session key cần parse
+
+    Returns:
+        Agent ID nếu hợp lệ, None nếu không
+    """
+    if not session_key or not isinstance(session_key, str):
+        return None
+    parts = session_key.split(":")
+    if len(parts) >= 2 and parts[0] == "agent":
+        agent_id = parts[1]
+        # Validate extracted agent_id
+        if _validate_agent_id(agent_id):
+            return agent_id
+    return None
 
 
 @dataclass
@@ -63,8 +111,9 @@ class A2ASecurityConfig:
         )
     """
 
-    allow_incoming: List[str] = field(default_factory=lambda: ["*"])
-    allow_outgoing: List[str] = field(default_factory=lambda: ["*"])
+    # Security: Default to closed policy (deny all)
+    allow_incoming: List[str] = field(default_factory=list)
+    allow_outgoing: List[str] = field(default_factory=list)
     deny_incoming: List[str] = field(default_factory=list)
     deny_outgoing: List[str] = field(default_factory=list)
     history_access: Dict[str, PermissionLevel] = field(default_factory=dict)
@@ -88,6 +137,10 @@ class A2ASecurityConfig:
                 # Xử lý message
                 pass
         """
+        # Security: Validate agent ID format
+        if not _validate_agent_id(from_agent):
+            return False
+
         # Kiểm tra deny list trước (ưu tiên cao hơn)
         if from_agent in self.deny_incoming:
             return False
@@ -113,6 +166,10 @@ class A2ASecurityConfig:
                 # Gửi message
                 pass
         """
+        # Security: Validate agent ID format
+        if not _validate_agent_id(to_agent):
+            return False
+
         # Kiểm tra deny list trước
         if to_agent in self.deny_outgoing:
             return False
@@ -415,15 +472,16 @@ class A2AAccessControl:
             if level.can_read_history:
                 history = await get_session_history("agent:main:session-1")
         """
+        # Security: Validate agent ID
+        if not _validate_agent_id(agent):
+            return PermissionLevel.NONE
+
         # Tìm agent sở hữu session
         target_agent = self._session_agent_map.get(target_session)
         if target_agent is None:
-            # Extract agent_id từ session_key nếu có thể
-            # Format: agent:<agentId>:<scope>:<identifier>
-            parts = target_session.split(":")
-            if len(parts) >= 2 and parts[0] == "agent":
-                target_agent = parts[1]
-            else:
+            # Security: Safely extract agent_id from session_key
+            target_agent = _extract_agent_from_session_key(target_session)
+            if target_agent is None:
                 return PermissionLevel.NONE
 
         # Lấy config của target agent
