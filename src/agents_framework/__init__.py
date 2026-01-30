@@ -80,6 +80,15 @@ from .execution import (
     Hook,
     HookType,
 )
+from .routing import (
+    RoutingEngine,
+    RoutingRequest,
+    RoutingResult,
+    RoutingRule,
+    RoutingConfig,
+    StaticRouter,
+    PatternRouter,
+)
 
 __all__ = [
     "__version__",
@@ -118,4 +127,12 @@ __all__ = [
     "HookRegistry",
     "Hook",
     "HookType",
+    # Routing
+    "RoutingEngine",
+    "RoutingRequest",
+    "RoutingResult",
+    "RoutingRule",
+    "RoutingConfig",
+    "StaticRouter",
+    "PatternRouter",
 ]
