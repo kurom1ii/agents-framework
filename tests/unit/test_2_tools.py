@@ -136,10 +136,10 @@ class TestToolSystemCore:
         registry.register(CalculatorTool())
         executor = ToolExecutor(registry)
 
-        result = await executor.execute("calculator", expression="10 * 5")
+        execution_result = await executor.execute("calculator", "call_1", {"expression": "10 * 5"})
 
-        assert result.success is True
-        assert result.output == "50"
+        assert execution_result.result.success is True
+        assert execution_result.result.output == "50"
 
     @pytest.mark.asyncio
     async def test_tool_executor_handles_missing_tool(self):
@@ -147,7 +147,7 @@ class TestToolSystemCore:
         registry = ToolRegistry()
         executor = ToolExecutor(registry)
 
-        result = await executor.execute("nonexistent", arg="value")
+        execution_result = await executor.execute("nonexistent", "call_1", {"arg": "value"})
 
-        assert result.success is False
-        assert "not found" in result.error.lower()
+        assert execution_result.result.success is False
+        assert "not found" in execution_result.result.error.lower()

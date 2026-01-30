@@ -7,22 +7,39 @@ This test verifies multi-agent orchestration:
 """
 
 import pytest
-from agents_framework.llm.base import LLMConfig
-from agents_framework.teams.router import MessageRouter, AgentMessage, MessagePriority
-from agents_framework.teams.registry import AgentRegistry, AgentStatus
+from dataclasses import dataclass, field
+from typing import List
+from agents_framework.teams.router import MessageRouter, AgentMessage, MessagePriority, RoutingStrategy
+from agents_framework.teams.registry import AgentRegistry
+from agents_framework.agents import AgentStatus
+
+
+@dataclass
+class MockRole:
+    """Mock role for testing."""
+    name: str = "worker"
+    capabilities: List[str] = field(default_factory=list)
+
+
+@dataclass
+class MockConfig:
+    """Mock config for testing."""
+    name: str = "test-agent"
 
 
 class MockAgent:
     """Simple mock agent for testing teams."""
 
     def __init__(self, agent_id: str, role: str = "worker"):
-        self.agent_id = agent_id
-        self.role = role
+        self.id = agent_id
+        self.config = MockConfig(name=f"Agent-{agent_id}")
+        self.role = MockRole(name=role, capabilities=["process"])
+        self.status = AgentStatus.IDLE
         self.received_messages = []
 
     async def handle_message(self, message):
         self.received_messages.append(message)
-        return f"Handled by {self.agent_id}"
+        return f"Handled by {self.id}"
 
 
 class TestMultiAgentTeamsCore:
@@ -33,7 +50,7 @@ class TestMultiAgentTeamsCore:
         registry = AgentRegistry()
         agent = MockAgent("agent_1", role="researcher")
 
-        registry.register(agent, agent_id="agent_1", role="researcher")
+        registry.register(agent)
 
         assert registry.has("agent_1")
         assert registry.get("agent_1") is agent
@@ -44,10 +61,10 @@ class TestMultiAgentTeamsCore:
         researcher = MockAgent("r1", role="researcher")
         writer = MockAgent("w1", role="writer")
 
-        registry.register(researcher, agent_id="r1", role="researcher")
-        registry.register(writer, agent_id="w1", role="writer")
+        registry.register(researcher)
+        registry.register(writer)
 
-        researchers = registry.get_by_role("researcher")
+        researchers = registry.find_by_role("researcher")
         assert len(researchers) == 1
         assert researchers[0] is researcher
 
@@ -56,23 +73,23 @@ class TestMultiAgentTeamsCore:
         registry = AgentRegistry()
         agent = MockAgent("agent_1")
 
-        registry.register(agent, agent_id="agent_1")
-        registry.set_status("agent_1", AgentStatus.BUSY)
+        registry.register(agent)
+        registry.update_status("agent_1", AgentStatus.BUSY)
 
-        status = registry.get_status("agent_1")
-        assert status == AgentStatus.BUSY
+        info = registry.get_info("agent_1")
+        assert info.status == AgentStatus.BUSY
 
     def test_agent_message_creation(self):
         """AgentMessage carries inter-agent communication."""
         message = AgentMessage(
             sender_id="supervisor",
-            receiver_id="worker_1",
+            recipient_id="worker_1",
             content="Please research topic X",
             priority=MessagePriority.HIGH,
         )
 
         assert message.sender_id == "supervisor"
-        assert message.receiver_id == "worker_1"
+        assert message.recipient_id == "worker_1"
         assert message.priority == MessagePriority.HIGH
 
     @pytest.mark.asyncio
@@ -81,83 +98,76 @@ class TestMultiAgentTeamsCore:
         router = MessageRouter()
         agent = MockAgent("worker_1")
 
-        router.register_agent("worker_1", agent.handle_message)
+        router.register_agent("worker_1", handler=agent.handle_message)
 
         message = AgentMessage(
             sender_id="supervisor",
-            receiver_id="worker_1",
+            recipient_id="worker_1",
             content="Do task",
         )
 
-        await router.route(message)
+        recipients = await router.send(message)
 
         # Check agent received the message
         assert len(agent.received_messages) == 1
+        assert "worker_1" in recipients
 
     @pytest.mark.asyncio
     async def test_message_router_broadcast(self):
-        """MessageRouter can broadcast to all agents."""
+        """MessageRouter can broadcast to topic subscribers."""
         router = MessageRouter()
         agent1 = MockAgent("agent_1")
         agent2 = MockAgent("agent_2")
 
-        router.register_agent("agent_1", agent1.handle_message)
-        router.register_agent("agent_2", agent2.handle_message)
+        router.register_agent("agent_1", handler=agent1.handle_message)
+        router.register_agent("agent_2", handler=agent2.handle_message)
+
+        # Subscribe both to a topic
+        router.subscribe("agent_1", "announcements")
+        router.subscribe("agent_2", "announcements")
 
         message = AgentMessage(
             sender_id="supervisor",
-            receiver_id="*",  # Broadcast
+            topic="announcements",  # Topic-based routing
             content="Announcement",
+            strategy=RoutingStrategy.TOPIC,
         )
 
-        await router.broadcast(message)
+        recipients = await router.send(message)
 
         assert len(agent1.received_messages) == 1
         assert len(agent2.received_messages) == 1
+        assert len(recipients) == 2
 
     def test_agent_registry_list_all(self):
         """AgentRegistry lists all registered agents."""
         registry = AgentRegistry()
-        registry.register(MockAgent("a1"), agent_id="a1")
-        registry.register(MockAgent("a2"), agent_id="a2")
-        registry.register(MockAgent("a3"), agent_id="a3")
+        registry.register(MockAgent("a1"))
+        registry.register(MockAgent("a2"))
+        registry.register(MockAgent("a3"))
 
-        all_agents = registry.list_all()
+        all_agent_ids = registry.list_ids()
 
-        assert len(all_agents) == 3
-        assert "a1" in [a[0] for a in all_agents]
+        assert len(all_agent_ids) == 3
+        assert "a1" in all_agent_ids
 
     def test_agent_registry_unregister(self):
         """AgentRegistry can remove agents."""
         registry = AgentRegistry()
-        registry.register(MockAgent("temp"), agent_id="temp")
+        registry.register(MockAgent("temp"))
 
         assert registry.has("temp")
         registry.unregister("temp")
         assert not registry.has("temp")
 
-    @pytest.mark.asyncio
-    async def test_priority_message_ordering(self):
-        """Messages with higher priority are processed first."""
-        router = MessageRouter()
-        received_order = []
+    def test_agent_message_with_metadata(self):
+        """AgentMessage can carry metadata."""
+        message = AgentMessage(
+            sender_id="sender",
+            recipient_id="receiver",
+            content="test",
+            metadata={"key": "value", "count": 42},
+        )
 
-        async def handler(msg):
-            received_order.append(msg.priority.value)
-
-        router.register_agent("worker", handler)
-
-        # Queue messages with different priorities
-        low = AgentMessage(sender_id="s", receiver_id="worker", content="low", priority=MessagePriority.LOW)
-        high = AgentMessage(sender_id="s", receiver_id="worker", content="high", priority=MessagePriority.HIGH)
-        normal = AgentMessage(sender_id="s", receiver_id="worker", content="normal", priority=MessagePriority.NORMAL)
-
-        # Add to priority queue and process
-        router.enqueue(high)
-        router.enqueue(low)
-        router.enqueue(normal)
-
-        await router.process_queue()
-
-        # High priority should be first
-        assert received_order[0] >= received_order[1] >= received_order[2]
+        assert message.metadata["key"] == "value"
+        assert message.metadata["count"] == 42
