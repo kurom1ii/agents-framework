@@ -9,12 +9,21 @@ bao gồm:
 - SessionManager: Quản lý vòng đời session
 - SessionResolver: Giải quyết session keys
 - TranscriptStore: Lưu trữ bản ghi hội thoại
+- Reset Policies: Các chính sách reset session tự động và thủ công
 
 Session Stores có sẵn:
 - InMemorySessionStore: Lưu trữ trong bộ nhớ (development, testing)
 - FileSessionStore: Lưu trữ file JSON (simple persistence)
 - SQLiteSessionStore: Lưu trữ SQLite (production, với connection pooling)
 - CompositeSessionStore: Kết hợp cache và persistence
+
+Reset Policies có sẵn:
+- DailyResetPolicy: Reset session vào giờ cố định mỗi ngày
+- IdleResetPolicy: Reset session sau thời gian không hoạt động
+- CombinedResetPolicy: Kết hợp daily + idle reset
+- MultiResetPolicy: Kết hợp nhiều policies tùy ý
+- ManualResetPolicy: Reset thủ công qua commands
+- EventBasedResetPolicy: Reset dựa trên events (lỗi, completion)
 
 Ví dụ sử dụng InMemorySessionStore:
     ```python
@@ -64,6 +73,33 @@ Ví dụ sử dụng SQLiteSessionStore (production):
         async with SQLiteSessionStore(Path("./sessions.db")) as store:
             sessions = await store.list_all()
     ```
+
+Ví dụ sử dụng Reset Policies:
+    ```python
+    from datetime import datetime
+    from agents_framework.sessions import (
+        DailyResetPolicy,
+        IdleResetPolicy,
+        CombinedResetPolicy,
+        ManualResetPolicy,
+    )
+
+    # Sử dụng combined policy (khuyến nghị)
+    policy = CombinedResetPolicy(
+        daily=DailyResetPolicy(reset_hour=4),
+        idle=IdleResetPolicy(idle_minutes=120)
+    )
+
+    # Kiểm tra session có cần reset không
+    result = policy.check(session, datetime.now())
+    if result.should_reset:
+        new_session = await manager.reset(session.session_key)
+
+    # Xử lý manual reset triggers
+    manual_policy = ManualResetPolicy(triggers=["/new", "/reset"])
+    if manual_policy.is_reset_trigger(user_message):
+        await manager.reset(session.session_key)
+    ```
 """
 
 from .base import (
@@ -100,6 +136,31 @@ from .transcript import (
     FileTranscriptStore,
 )
 
+from .policies import (
+    # Base - Enums
+    ResetReason,
+    # Base - Data classes
+    ResetResult,
+    ResetEvent,
+    # Base - Protocols
+    ResetPolicy,
+    ResetPolicyBase,
+    # Base - Types
+    ResetHookCallback,
+    ResetTrigger,
+    DEFAULT_RESET_TRIGGERS,
+    # Daily
+    DailyResetPolicy,
+    # Idle
+    IdleResetPolicy,
+    # Combined
+    CombinedResetPolicy,
+    MultiResetPolicy,
+    # Manual
+    ManualResetPolicy,
+    EventBasedResetPolicy,
+)
+
 __all__ = [
     # Base models
     "Session",
@@ -125,4 +186,20 @@ __all__ = [
     "TranscriptStoreProtocol",
     "InMemoryTranscriptStore",
     "FileTranscriptStore",
+    # Policies - Base
+    "ResetReason",
+    "ResetResult",
+    "ResetEvent",
+    "ResetPolicy",
+    "ResetPolicyBase",
+    "ResetHookCallback",
+    "ResetTrigger",
+    "DEFAULT_RESET_TRIGGERS",
+    # Policies - Implementations
+    "DailyResetPolicy",
+    "IdleResetPolicy",
+    "CombinedResetPolicy",
+    "MultiResetPolicy",
+    "ManualResetPolicy",
+    "EventBasedResetPolicy",
 ]
