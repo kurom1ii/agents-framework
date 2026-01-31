@@ -1,82 +1,90 @@
 #!/usr/bin/env python3
 """Example 1: Simple Agent - Basic conversation with tools.
 
-Ví dụ đơn giản nhất về cách tạo agent với tools.
+Vi du don gian nhat ve cach tao agent voi tools.
 
-Base URL: http://localhost:4141 (OpenAI-compatible)
-Model: claude-opus-4.5
-Thinking: Enabled
+Provider: Anthropic (native)
+Model: claude-sonnet-4-20250514
+Thinking: Extended thinking enabled
 """
 
 import asyncio
 from agents_framework.llm.base import LLMConfig, Message, MessageRole
-from agents_framework.llm.providers.openai import OpenAIProvider
+from agents_framework.llm.providers.anthropic import AnthropicProvider
 from agents_framework.tools.base import tool
 from agents_framework.tools.registry import ToolRegistry
 
 
 # ============================================================================
-# Cấu hình LLM - OpenAI-compatible endpoint
+# Cau hinh LLM - Anthropic native API
 # ============================================================================
 
 LLM_CONFIG = LLMConfig(
-    model="claude-opus-4.5",
-    api_key="test",  # Thay bằng API key thực
-    base_url="http://localhost:4141/v1",  # OpenAI-compatible endpoint
-    temperature=0.7,
+    model="claude-haiku-4.5",
+    api_key="test" ,  # Khong su dung trong Anthropic native
+    temperature=0.1,  # Required for extended thinking
+    base_url="http://localhost:4141",
     max_tokens=16000,
     extra_params={
-        "thinking": {"type": "enabled", "budget_tokens": 32000},
-    },
+        # Extended thinking configuration (Anthropic native)
+        # "thinking": {
+        #     "type": "false",
+        #     "budget_tokens": 32000,
+        # },
+    }
 )
 
 
 # ============================================================================
-# Định nghĩa Tools
+# Dinh nghia Tools
 # ============================================================================
 
-@tool(name="calculator", description="Tính toán biểu thức toán học")
+@tool(name="calculator", description="Tinh toan bieu thuc toan hoc")
 def calculator(expression: str) -> str:
-    """Tính toán một biểu thức toán học.
+    """Tinh toan mot bieu thuc toan hoc.
 
     Args:
-        expression: Biểu thức toán học, ví dụ: "2 + 2", "10 * 5"
+        expression: Bieu thuc toan hoc, vi du: "2 + 2", "10 * 5"
     """
     try:
+        # Safe evaluation - only allow basic math
+        allowed_chars = set("0123456789+-*/().% ")
+        if not all(c in allowed_chars for c in expression):
+            return "Loi: Bieu thuc khong hop le"
         result = eval(expression)
-        return f"Kết quả: {result}"
+        return f"Ket qua: {result}"
     except Exception as e:
-        return f"Lỗi: {e}"
+        return f"Loi: {e}"
 
 
-@tool(name="get_weather", description="Lấy thông tin thời tiết")
+@tool(name="get_weather", description="Lay thong tin thoi tiet")
 def get_weather(city: str) -> str:
-    """Lấy thông tin thời tiết cho một thành phố.
+    """Lay thong tin thoi tiet cho mot thanh pho.
 
     Args:
-        city: Tên thành phố
+        city: Ten thanh pho
     """
-    # Mock data cho ví dụ
+    # Mock data cho vi du
     weather_data = {
-        "hanoi": "Hà Nội: 28°C, Nắng nhẹ",
-        "hochiminh": "TP.HCM: 32°C, Có mây",
-        "danang": "Đà Nẵng: 30°C, Mưa rào",
+        "hanoi": "Ha Noi: 28C, Nang nhe",
+        "hochiminh": "TP.HCM: 32C, Co may",
+        "danang": "Da Nang: 30C, Mua rao",
     }
     city_key = city.lower().replace(" ", "")
-    return weather_data.get(city_key, f"Không có dữ liệu cho {city}")
+    return weather_data.get(city_key, f"Khong co du lieu cho {city}")
 
 
 # ============================================================================
-# Hàm chính chạy Agent
+# Ham chinh chay Agent
 # ============================================================================
 
 async def run_simple_agent():
-    """Chạy agent đơn giản với conversation loop."""
+    """Chay agent don gian voi conversation loop."""
 
-    # Khởi tạo LLM Provider
-    provider = OpenAIProvider(LLM_CONFIG)
+    # Khoi tao LLM Provider - Anthropic native
+    provider = AnthropicProvider(LLM_CONFIG)
 
-    # Đăng ký tools
+    # Dang ky tools
     registry = ToolRegistry()
     registry.register(calculator)
     registry.register(get_weather)
@@ -85,51 +93,56 @@ async def run_simple_agent():
     messages = [
         Message(
             role=MessageRole.SYSTEM,
-            content="""Bạn là trợ lý AI thông minh. Bạn có thể:
-- Tính toán biểu thức toán học bằng tool "calculator"
-- Tra cứu thời tiết bằng tool "get_weather"
+            content="""Ban la tro ly AI thong minh. Ban co the:
+- Tinh toan bieu thuc toan hoc bang tool "calculator"
+- Tra cuu thoi tiet bang tool "get_weather"
 
-Hãy trả lời bằng tiếng Việt và sử dụng tools khi cần thiết.""",
+Hay tra loi bang tieng Viet va su dung tools khi can thiet.""",
         )
     ]
 
     print("=" * 60)
-    print("Simple Agent - Nhập 'quit' để thoát")
+    print("Simple Agent (Anthropic + Extended Thinking)")
+    print("Nhap 'quit' de thoat")
     print("=" * 60)
 
     while True:
-        # Nhận input từ user
-        user_input = input("\nBạn: ").strip()
+        # Nhan input tu user
+        user_input = input("\nBan: ").strip()
         if user_input.lower() == "quit":
-            print("Tạm biệt!")
+            print("Tam biet!")
             break
 
-        # Thêm message của user
+        # Them message cua user
         messages.append(Message(role=MessageRole.USER, content=user_input))
 
-        # Gọi LLM
+        # Goi LLM
         response = await provider.generate(
             messages=messages,
             tools=registry.to_definitions(),
         )
 
-        # Xử lý tool calls nếu có
+        # Hien thi thinking neu co
+        if response.has_thinking:
+            print(f"\n[Thinking] {response.thinking_content[:200]}...")
+
+        # Xu ly tool calls neu co
         while response.has_tool_calls:
-            # Thêm assistant message với tool calls
+            # Them assistant message voi tool calls
             messages.append(Message(
                 role=MessageRole.ASSISTANT,
                 content=response.content or "",
                 tool_calls=response.tool_calls,
             ))
 
-            # Thực thi từng tool
+            # Thuc thi tung tool
             for tool_call in response.tool_calls:
                 tool_obj = registry.get(tool_call.name)
                 if tool_obj:
                     result = await tool_obj.run(**tool_call.arguments)
                     output = result.output if result.success else result.error
 
-                    # Thêm tool response
+                    # Them tool response
                     messages.append(Message(
                         role=MessageRole.TOOL,
                         content=str(output),
@@ -137,16 +150,20 @@ Hãy trả lời bằng tiếng Việt và sử dụng tools khi cần thiết."
                     ))
                     print(f"[Tool: {tool_call.name}] -> {output}")
 
-            # Gọi LLM lại với tool results
+            # Goi LLM lai voi tool results
             response = await provider.generate(
                 messages=messages,
                 tools=registry.to_definitions(),
             )
 
-        # In response cuối cùng
+            # Hien thi thinking neu co
+            if response.has_thinking:
+                print(f"\n[Thinking] {response.thinking_content[:200]}...")
+
+        # In response cuoi cung
         print(f"\nAgent: {response.content}")
 
-        # Thêm assistant response vào history
+        # Them assistant response vao history
         messages.append(Message(
             role=MessageRole.ASSISTANT,
             content=response.content,

@@ -14,6 +14,7 @@ from ..base import (
     MessageRole,
     RateLimitError,
     AuthenticationError,
+    ThinkingBlock,
     ToolCall,
     ToolDefinition,
 )
@@ -197,10 +198,19 @@ class AnthropicProvider(BaseLLMProvider):
             # Parse response content
             content_parts = []
             tool_calls = []
+            thinking_blocks = []
 
             for block in response.content:
                 if block.type == "text":
                     content_parts.append(block.text)
+                elif block.type == "thinking":
+                    # Extended thinking block
+                    thinking_blocks.append(
+                        ThinkingBlock(
+                            content=block.thinking,
+                            signature=getattr(block, "signature", None),
+                        )
+                    )
                 elif block.type == "tool_use":
                     tool_calls.append(
                         ToolCall(
@@ -221,6 +231,7 @@ class AnthropicProvider(BaseLLMProvider):
                     "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
                 },
                 raw_response=response,
+                thinking=thinking_blocks if thinking_blocks else None,
             )
 
         return await self._retry_with_backoff(_make_request)

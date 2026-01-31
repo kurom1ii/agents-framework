@@ -82,6 +82,14 @@ class Message:
 
 
 @dataclass
+class ThinkingBlock:
+    """Represents a thinking block from extended thinking."""
+
+    content: str
+    signature: Optional[str] = None  # For thinking signature if provided
+
+
+@dataclass
 class LLMResponse:
     """Response from an LLM provider."""
 
@@ -91,11 +99,24 @@ class LLMResponse:
     tool_calls: Optional[List[ToolCall]] = None
     usage: Optional[Dict[str, int]] = None  # tokens used
     raw_response: Optional[Any] = None  # Original response object
+    thinking: Optional[List[ThinkingBlock]] = None  # Extended thinking blocks
 
     @property
     def has_tool_calls(self) -> bool:
         """Check if response contains tool calls."""
         return bool(self.tool_calls)
+
+    @property
+    def has_thinking(self) -> bool:
+        """Check if response contains thinking blocks."""
+        return bool(self.thinking)
+
+    @property
+    def thinking_content(self) -> str:
+        """Get combined thinking content as a single string."""
+        if not self.thinking:
+            return ""
+        return "\n\n".join(block.content for block in self.thinking)
 
 
 @dataclass

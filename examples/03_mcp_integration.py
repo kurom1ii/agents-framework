@@ -1,156 +1,125 @@
 #!/usr/bin/env python3
-"""Example 3: MCP Integration - Connect to external tools via MCP.
+"""Example 3: MCP Integration - Connect to Writing Board MCP Server.
 
-Ví dụ về tích hợp MCP (Model Context Protocol):
-- Kết nối với MCP server
-- Sử dụng tools từ MCP
-- Kết hợp MCP tools với local tools
+Vi du ve tich hop MCP (Model Context Protocol) voi Writing Board:
+- Ket noi voi Writing Board MCP server
+- Quan ly bai viet (list, create, update, delete)
 
-Base URL: http://localhost:4141 (OpenAI-compatible)
+Provider: Anthropic (native)
 Model: claude-opus-4.5
-Thinking: Enabled
+MCP Server: writing-board
 """
 
 import asyncio
 from typing import Optional
 
 from agents_framework.llm.base import LLMConfig, Message, MessageRole
-from agents_framework.llm.providers.openai import OpenAIProvider
-from agents_framework.tools.base import tool
+from agents_framework.llm.providers.anthropic import AnthropicProvider
 from agents_framework.tools.registry import ToolRegistry
-from agents_framework.mcp.client import MCPClient, MCPClientConfig
+from agents_framework.mcp.client import MCPClient, MCPClientConfig, MCPTool
+from agents_framework.mcp.transport import (
+    StdioTransportConfig,
+    TransportType,
+    create_transport,
+)
 from agents_framework.mcp.tools import MCPToolAdapter
 
 
 # ============================================================================
-# Cấu hình
+# Cau hinh LLM
 # ============================================================================
 
 LLM_CONFIG = LLMConfig(
-    model="claude-opus-4.5",
-    api_key="your-api-key",
-    base_url="http://localhost:4141/v1",
-    temperature=0.7,
-    max_tokens=4096,
-    extra_params={
-        "thinking": {"type": "enabled", "budget_tokens": 10000},
-    },
+    model="claude-haiku-4.5",
+    api_key="test",  # Khong su dung trong Anthropic native
+    temperature=0.1,
+    base_url="http://localhost:4141",
+    max_tokens=16000,
+    # extra_params={
+    #     # Extended thinking configuration (Anthropic native)
+    #     "thinking": {
+    #         "type": "enabled",
+    #         "budget_tokens": 32000,
+    #     }
+    # },
 )
 
-# MCP Server configs (ví dụ)
-MCP_SERVERS = [
-    {
-        "name": "filesystem",
-        "command": "npx",
-        "args": ["-y", "@anthropic/mcp-server-filesystem", "/tmp"],
-    },
-    {
-        "name": "memory",
-        "command": "npx",
-        "args": ["-y", "@anthropic/mcp-server-memory"],
-    },
-]
-
-
-# ============================================================================
-# Local Tools
-# ============================================================================
-
-@tool(name="get_current_time", description="Lấy thời gian hiện tại")
-def get_current_time() -> str:
-    """Trả về thời gian hiện tại."""
-    from datetime import datetime
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-
-@tool(name="calculate", description="Tính toán biểu thức")
-def calculate(expression: str) -> str:
-    """Tính toán biểu thức toán học."""
-    try:
-        return str(eval(expression))
-    except Exception as e:
-        return f"Lỗi: {e}"
+# MCP Server config - Writing Board
+MCP_SERVER_CONFIG = StdioTransportConfig(
+    command="npm",
+    args=["run", "mcp"],
+    cwd="/home/kuromi/project/mydir/board",
+)
 
 
 # ============================================================================
 # MCP Agent Class
 # ============================================================================
 
-class MCPAgent:
-    """Agent với khả năng sử dụng MCP tools."""
+class WritingBoardAgent:
+    """Agent voi kha nang quan ly bai viet qua Writing Board MCP."""
 
     def __init__(self):
-        self.provider = OpenAIProvider(LLM_CONFIG)
+        self.provider = AnthropicProvider(LLM_CONFIG)
         self.registry = ToolRegistry()
-        self.mcp_clients: dict[str, MCPClient] = {}
+        self.mcp_client: Optional[MCPClient] = None
 
-        # Đăng ký local tools
-        self.registry.register(get_current_time)
-        self.registry.register(calculate)
-
-    async def connect_mcp_server(self, name: str, command: str, args: list) -> bool:
-        """Kết nối với một MCP server."""
+    async def connect_mcp_server(self) -> bool:
+        """Ket noi voi Writing Board MCP server."""
         try:
-            config = MCPClientConfig(
-                name=name,
-                command=command,
-                args=args,
+            # Tao transport
+            transport = create_transport(TransportType.STDIO, MCP_SERVER_CONFIG)
+
+            # Tao MCP client
+            client_config = MCPClientConfig(
+                name="writing-board-agent",
+                version="1.0.0",
             )
-            client = MCPClient(config)
-            await client.connect()
+            self.mcp_client = MCPClient(transport, client_config)
+            await self.mcp_client.connect()
 
-            # Lấy tools từ MCP server
-            mcp_tools = await client.list_tools()
+            # Lay tools tu MCP server
+            mcp_tools = self.mcp_client.list_tools()
+            print(f"\n[Writing Board MCP] Connected! Available tools:")
             for mcp_tool in mcp_tools:
-                adapter = MCPToolAdapter(mcp_tool, client)
+                adapter = MCPToolAdapter(mcp_tool, self.mcp_client)
                 self.registry.register(adapter)
-                print(f"  - Đăng ký tool: {mcp_tool.name}")
-
-            self.mcp_clients[name] = client
+                desc = mcp_tool.description[:50] if mcp_tool.description else "No description"
+                print(f"  - {mcp_tool.name}: {desc}...")
             return True
 
         except Exception as e:
-            print(f"  ! Lỗi kết nối {name}: {e}")
+            print(f"\n[Error] Khong the ket noi Writing Board MCP: {e}")
             return False
 
-    async def connect_all_mcp_servers(self):
-        """Kết nối tất cả MCP servers đã cấu hình."""
-        print("\n[MCP] Đang kết nối các MCP servers...")
-
-        for server in MCP_SERVERS:
-            print(f"\n  Connecting to {server['name']}...")
-            success = await self.connect_mcp_server(
-                name=server["name"],
-                command=server["command"],
-                args=server["args"],
-            )
-            if success:
-                print(f"  ✓ {server['name']} connected")
-            else:
-                print(f"  ✗ {server['name']} failed")
-
-    async def disconnect_all(self):
-        """Ngắt kết nối tất cả MCP servers."""
-        for name, client in self.mcp_clients.items():
+    async def disconnect(self):
+        """Ngat ket noi MCP server."""
+        if self.mcp_client:
             try:
-                await client.disconnect()
-                print(f"  ✓ Disconnected {name}")
+                await self.mcp_client.disconnect()
+                print("[Writing Board MCP] Disconnected")
             except Exception:
                 pass
 
     async def chat(self, user_message: str, history: list[Message]) -> str:
-        """Xử lý một tin nhắn từ user."""
+        """Xu ly mot tin nhan tu user."""
 
-        # Thêm user message
+        # Them user message
         history.append(Message(role=MessageRole.USER, content=user_message))
 
-        # Gọi LLM với tools
+        # Goi LLM voi tools
         response = await self.provider.generate(
             messages=history,
             tools=self.registry.to_definitions(),
         )
+        #in day du request body gom ca tools
+        print(f"\n[LLM Request] Called with tools: {[tool.name for tool in self.registry]}")
+        
+        # Hien thi thinking neu co
+        if response.has_thinking:
+            print(f"  [Thinking] {response.thinking_content[:150]}...")
 
-        # Xử lý tool calls
+        # Xu ly tool calls
         while response.has_tool_calls:
             history.append(Message(
                 role=MessageRole.ASSISTANT,
@@ -159,7 +128,7 @@ class MCPAgent:
             ))
 
             for tool_call in response.tool_calls:
-                print(f"  [Calling: {tool_call.name}]")
+                print(f"  [Tool: {tool_call.name}]")
                 tool_obj = self.registry.get(tool_call.name)
 
                 if tool_obj:
@@ -173,14 +142,19 @@ class MCPAgent:
                     content=str(output),
                     tool_call_id=tool_call.id,
                 ))
-                print(f"  [Result: {str(output)[:100]}...]")
+                # Truncate output for display
+                display_output = str(output)[:200] + "..." if len(str(output)) > 200 else str(output)
+                print(f"  [Result] {display_output}")
 
             response = await self.provider.generate(
                 messages=history,
                 tools=self.registry.to_definitions(),
             )
 
-        # Thêm response vào history
+            if response.has_thinking:
+                print(f"  [Thinking] {response.thinking_content[:150]}...")
+
+        # Them response vao history
         history.append(Message(
             role=MessageRole.ASSISTANT,
             content=response.content,
@@ -194,48 +168,43 @@ class MCPAgent:
 # ============================================================================
 
 async def main():
-    """Chạy MCP Agent demo."""
+    """Chay Writing Board Agent demo."""
 
     print("=" * 60)
-    print("MCP AGENT - Demo với MCP Integration")
+    print("WRITING BOARD AGENT")
+    print("MCP Integration Demo")
     print("=" * 60)
 
-    agent = MCPAgent()
+    agent = WritingBoardAgent()
 
-    # Thử kết nối MCP servers (có thể fail nếu chưa cài)
-    try:
-        await agent.connect_all_mcp_servers()
-    except Exception as e:
-        print(f"\n[Warning] Không thể kết nối MCP servers: {e}")
-        print("Tiếp tục với local tools only...\n")
-
-    # Hiển thị available tools
-    print("\n[Available Tools]")
-    for tool_def in agent.registry.to_definitions():
-        print(f"  - {tool_def.name}: {tool_def.description}")
+    # Ket noi Writing Board MCP server
+    connected = await agent.connect_mcp_server()
+    if not connected:
+        print("\nKhong the ket noi MCP server. Thoat...")
+        return
 
     # System prompt
     history = [
         Message(
             role=MessageRole.SYSTEM,
-            content="""Bạn là AI assistant với khả năng sử dụng nhiều tools.
-Bạn có thể:
-- Đọc/ghi files (nếu MCP filesystem connected)
-- Lưu trữ memories (nếu MCP memory connected)
-- Tính toán và xem thời gian (local tools)
-
-Trả lời bằng tiếng Việt.""",
+            content="""Ban la AI assistant quan ly bai viet qua Writing Board.
+        Categories: blog, report, note
+        Difficulties: beginner, intermediate, advanced
+        Tra loi bang tieng Viet. Khi tao/cap nhat bai viet, hay xac nhan voi user truoc.""",
         )
     ]
-
     print("\n" + "-" * 60)
-    print("Chat (nhập 'quit' để thoát)")
+    print("Chat voi Writing Board Agent")
+    print("Nhap 'quit' de thoat")
     print("-" * 60)
 
     while True:
-        user_input = input("\nBạn: ").strip()
+        user_input = input("\nBan: ").strip()
         if user_input.lower() == "quit":
             break
+
+        if not user_input:
+            continue
 
         try:
             response = await agent.chat(user_input, history)
@@ -244,8 +213,8 @@ Trả lời bằng tiếng Việt.""",
             print(f"\n[Error] {e}")
 
     # Cleanup
-    await agent.disconnect_all()
-    print("\nTạm biệt!")
+    await agent.disconnect()
+    print("\nTam biet!")
 
 
 if __name__ == "__main__":
